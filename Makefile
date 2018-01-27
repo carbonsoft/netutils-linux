@@ -3,6 +3,7 @@ test:
 	./tests/utils_runnable
 	./tests/rss-ladder-test
 	./tests/server-info-show
+	./tests/server-info-rate
 	./tests/link_rate_units.sh
 
 env:
@@ -57,6 +58,7 @@ clean:
 	find . -name '*.pyc' -exec rm -f {} \;
 	find . -name '*.pyo' -exec rm -f {} \;
 	find . -name '*~' -exec rm -f {} \;
+	rm -f *.rpm
 
 lint:
 	./flake8.sh netutils_linux_monitoring netutils_linux_tuning netutils_linux_hardware
@@ -100,3 +102,6 @@ mac_run_softnet_stat_top:
 	. env/bin/activate && \
 	softnet-stat-top --random \
 		--softnet-stat-file=./tests/softnet_stat/softnet_stat1
+
+rpm_upload:
+	./scripts/packaging

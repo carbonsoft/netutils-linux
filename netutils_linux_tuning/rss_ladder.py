@@ -9,8 +9,8 @@ from os.path import join, exists
 from six import print_
 from six.moves import xrange
 
-from netutils_linux_hardware.assessor_math import any2int
-from netutils_linux_monitoring.colors import wrap, YELLOW, cpu_color, COLORS_NODE
+from netutils_linux_hardware.rate_math import any2int
+from netutils_linux_monitoring.colors import Color
 from netutils_linux_monitoring.topology import Topology
 from netutils_linux_tuning.base_tune import CPUBasedTune
 
@@ -21,6 +21,7 @@ class RSSLadder(CPUBasedTune):
     """ Distributor of queues' interrupts by multiple CPUs """
 
     topology = None
+    color = None
     interrupts_file = None
 
     def __init__(self, argv=None):
@@ -38,8 +39,8 @@ class RSSLadder(CPUBasedTune):
         interrupts_file = '/proc/interrupts'
         lscpu_output = None
         if self.options.test_dir:
-            interrupts_file = join(self.options.test_dir, "interrupts")
-            lscpu_output_filename = join(self.options.test_dir, "lscpu_output")
+            interrupts_file = join(self.options.test_dir, 'interrupts')
+            lscpu_output_filename = join(self.options.test_dir, 'lscpu_output')
             lscpu_output = open(lscpu_output_filename).read()
             # Popen.stdout: python 2.7 returns <str>, 3.6 returns <bytes>
             # read() in both cases return <str>
@@ -61,26 +62,26 @@ class RSSLadder(CPUBasedTune):
         affinity = list(decision)
         cpus = [socket_cpu for irq, queue, socket_cpu in affinity]
         if len(set(cpus)) != len(cpus):
-            warning = "WARNING: some CPUs process multiple queues, consider reduce queue count for this network device"
+            warning = 'WARNING: some CPUs process multiple queues, consider reduce queue count for this network device'
             if self.options.color:
-                print_(wrap(warning, YELLOW))
+                print_(self.color.wrap(warning, Color.YELLOW))
             else:
                 print_(warning)
         for irq, queue_name, socket_cpu in affinity:
-            print_("  - {0}: irq {1} {2} -> {3}".format(
-                self.dev_colorize(), irq, queue_name, self.cpu_colorize(socket_cpu)))
+            print_("  - {0}: queue {1} (irq {2}) bound to CPU{3}".format(
+                self.dev_colorize(), queue_name, irq, self.cpu_colorize(socket_cpu)))
             if self.options.dry_run:
                 continue
-            filename = "/proc/irq/{0}/smp_affinity_list".format(irq)
+            filename = '/proc/irq/{0}/smp_affinity_list'.format(irq)
             with open(filename, 'w') as irq_file:
                 irq_file.write(str(socket_cpu))
 
     def __eval(self, postfix, interrupts):
         """
-        :param postfix: "-TxRx-"
+        :param postfix: '-TxRx-'
         :return: list of tuples(irq, queue_name, socket)
         """
-        print_("- distribute interrupts of {0} ({1}) on socket {2}".format(
+        print_('- distribute interrupts of {0} ({1}) on socket {2}'.format(
             self.options.dev, postfix, self.options.socket))
         queue_regex = r'{0}{1}[^ \n]+'.format(self.options.dev, postfix)
         rss_cpus = self.rss_cpus_detect()
@@ -98,14 +99,15 @@ class RSSLadder(CPUBasedTune):
         if self.options.cpus:  # no need to detect topology if user gave us cpu list
             return
         self.topology = Topology(lscpu_output=lscpu_output)
+        self.color = Color(self.topology, self.options.color)
         if not any([self.options.socket is not None, self.options.cpus]):
             self.socket_detect()
         self.pci.devices = self.pci.node_dev_dict([self.options.dev], False)
 
     def queue_postfix_extract(self, line):
         """
-        :param line: "31312 0 0 0 blabla eth0-TxRx-0"
-        :return: "-TxRx-"
+        :param line: '31312 0 0 0 blabla eth0-TxRx-0'
+        :return: '-TxRx-'
         """
         queue_regex = r'{0}[^ \n]+'.format(self.options.dev)
         queue_name = re.findall(queue_regex, line)
@@ -115,7 +117,7 @@ class RSSLadder(CPUBasedTune):
     def queue_postfixes_detect(self, interrupts):
         """
         self.dev: eth0
-        :return: "-TxRx-"
+        :return: '-TxRx-'
         """
         return set([line for line in [self.queue_postfix_extract(line) for line in interrupts] if line])
 
@@ -131,19 +133,20 @@ class RSSLadder(CPUBasedTune):
         """
         :return: highlighted by NUMA-node name of the device
         """
-        if not self.pci or not self.options.color:
+        if not self.pci or not self.options.color or not self.pci.devices:
             return self.options.dev
-        color = COLORS_NODE.get(self.pci.devices.get(self.options.dev))
-        return wrap(self.options.dev, color)
+        dev_color = self.pci.devices.get(self.options.dev)
+        color = self.color.COLORS_NODE.get(dev_color)
+        return self.color.wrap(self.options.dev, color)
 
     def cpu_colorize(self, cpu):
         """
         :param cpu: cpu number (0)
         :return: highlighted by NUMA-node cpu number.
         """
-        if not self.topology or not self.options.color:
+        if not self.topology:
             return cpu
-        return wrap(cpu, cpu_color(cpu, topology=self.topology))
+        return self.color.wrap(cpu, self.color.colorize_cpu(cpu))
 
     def parse_options(self):
         """
@@ -153,9 +156,9 @@ class RSSLadder(CPUBasedTune):
         parser.add_argument('--no-color', help='Disable all highlights', dest='color', action='store_false',
                             default=True)
         parser.add_argument('-o', '--offset', type=int, default=0,
-                            help="If you have 2 NICs with 4 queues and 1 socket with 8 cpus, you may be want "
-                                 "distribution like this: eth0: [0, 1, 2, 3]; eth1: [4, 5, 6, 7]; "
-                                 "so run: rss-ladder-test eth0; rss-ladder-test --offset=4 eth1")
+                            help='If you have 2 NICs with 4 queues and 1 socket with 8 cpus, you may be want '
+                                 'distribution like this: eth0: [0, 1, 2, 3]; eth1: [4, 5, 6, 7]; '
+                                 'so run: rss-ladder-test eth0; rss-ladder-test --offset=4 eth1')
         return parser.parse_args()
 
 

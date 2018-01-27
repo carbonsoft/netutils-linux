@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SYSCONFIG=/etc/sysconfig/network-scripts/
-TMPDIR="/tmp/$1"
+TMPDIR="$1"
 
 prepare() {
 	mkdir -p $TMPDIR/ethtool/{g,i,c} $TMPDIR/network-scripts/
@@ -13,12 +13,19 @@ server_info() {
 	cat /proc/interrupts > $TMPDIR/interrupts
 	cat /proc/meminfo > $TMPDIR/meminfo
 	cat /proc/cpuinfo > $TMPDIR/cpuinfo
-	cat /proc/scsi/scsi > $TMPDIR/scsi
+	cat /proc/scsi/scsi > $TMPDIR/scsi 2>/dev/null || true
 	LANG= lsblk -d --output=NAME,MODEL > $TMPDIR/lsblk_models
 	LANG= lsblk -nlb --output SIZE,MOUNTPOINT,NAME > $TMPDIR/lsblk_sizes
-	LANG= lspci > $TMPDIR/lspci || true
+	if ! LANG= lspci 2>/dev/null > $TMPDIR/lspci; then
+		echo "Consider install lspci" >&2
+		echo "	yum -y install pciutils" >&2
+	fi
 	LANG= lscpu > $TMPDIR/lscpu_info
 	LANG= lscpu -p | grep -v '^#' | awk -F ',' '{print $1" "$3}' > $TMPDIR/lscpu_layout
+	if ! LANG= dmidecode --type memory 2>/dev/null > $TMPDIR/dmidecode; then
+		echo "Consider installing dmidecode:" >&2
+		echo "	yum -y install dmidecode" >&2
+	fi
 	fgrep -H '' /sys/block/*/queue/rotational | egrep -v '[0-9]+/' >  $TMPDIR/disks_types || true
 }
 
@@ -55,19 +62,10 @@ network_info() {
 	done
 }
 
-make_archive() {
-	local output="/root/$1.tar.gz"
-	cd /tmp/
-	tar cfz "$output" "$1"
-	rm -rf $TMPDIR
-	echo "$output"
-}
-
 main() {
 	prepare
 	server_info
 	network_info
-	make_archive "$@"
 }
 
-main "$@"
+main

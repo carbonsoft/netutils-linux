@@ -5,10 +5,10 @@ from os import system
 from random import randint
 from time import sleep
 
-from colorama import Fore
 from six import print_
 
-from netutils_linux_monitoring.colors import wrap
+from netutils_linux_monitoring.colors import Color
+from netutils_linux_monitoring.topology import Topology
 
 
 class BaseTop(object):
@@ -16,10 +16,12 @@ class BaseTop(object):
     current = None
     previous = None
     diff = None
-    header = wrap("Press CTRL-C to exit...\n", Fore.LIGHTBLACK_EX)
+    header = Color.wrap('Press CTRL-C to exit...\n', Color.GREY)
     options = None
     file_arg = None
     file_value = None
+    topology = None
+    color = None
 
     @staticmethod
     def make_base_parser(parser=None):
@@ -29,13 +31,13 @@ class BaseTop(object):
         parser.add_argument('-i', '--interval', default=1, type=int,
                             help='Interval between screen renew in seconds.')
         parser.add_argument('-n', '--iterations', dest='iterations', default=60, type=int,
-                            help="Count of screen's renews, -1 - infinite loop.")
+                            help='Count of screen\'s renews, -1 - infinite loop.')
         parser.add_argument('--no-delta-mode', action='store_false', dest='delta_mode',
                             default=True, help="Shows metrics' values instead of growth.")
         parser.add_argument('--no-delta-small-hide', action='store_false',
                             dest='delta_small_hide', default=True,
-                            help="Prevent lines with only small changes or without"
-                                 "changes at all from hiding.")
+                            help='Prevent lines with only small changes or without'
+                                 'changes at all from hiding.')
         parser.add_argument('-l', '--delta-small-hide-limit', default=80, type=int,
                             help='Hides lines with only changes less than this limit')
         parser.add_argument('--no-color', dest='color', default=True, action='store_false',
@@ -44,16 +46,17 @@ class BaseTop(object):
                             help="Add spaces in numbers' representation, e.g. '1234567' "
                                  "will be '1 234 567'")
         parser.add_argument('--random', default=False, action='store_true',
-                            help="Shows random diff data instead of real evaluation. "
-                                 "Helpful for testing on static files")
+                            help='Shows random diff data instead of real evaluation. '
+                                 'Helpful for testing on static files')
         parser.add_argument('--no-clear', default=True, dest='clear', action='store_false',
                             help="Don't clear screen after each iteration. "
                                  "May be useful in scripts/logging to file.")
+        parser.add_argument('--lscpu-output', help='Specify file with lscpu -p output')
         return parser
 
     def make_parser(self, parser=None):
         if type(self) == BaseTop:
-            raise TypeError("make_parser should not be called directly by BaseTop")
+            raise TypeError('make_parser should not be called directly by BaseTop')
         if not parser:
             parser = BaseTop.make_base_parser()
         parser.add_argument(self.file_arg, default=self.file_value, help='Option for testing on MacOS purpose.')
@@ -112,6 +115,16 @@ class BaseTop(object):
         if self.options.clear:
             return BaseTop.header + str(table)
         return str(table)
+
+    def default_init(self, topology=None):
+        BaseTop.__init__(self)
+        self.topology = topology
+        self.color = Color(self.topology)
+
+    def default_post_optparse(self):
+        if not self.topology:
+            self.topology = Topology(fake=self.options.random)
+            self.color = Color(self.topology, self.options.color)
 
     @abstractmethod
     def parse(self):

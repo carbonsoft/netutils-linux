@@ -1,5 +1,5 @@
 # coding: utf-8
-from netutils_linux_hardware.assessor_math import any2int, round_
+from netutils_linux_hardware.rate_math import any2int, round_
 
 
 class Grade(object):
@@ -18,3 +18,7 @@ class Grade(object):
     @staticmethod
     def fact(value, mode=False):
         return 10 if (value is None) != mode else 1
+
+    @staticmethod
+    def known_values(value, _dict):
+        return _dict.get(value, 1)
